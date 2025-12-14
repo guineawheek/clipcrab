@@ -1,0 +1,8 @@
+
+pub fn main() {
+
+    clipcrab_ingest::ingest(
+        "/disk/guinea/first/2026/FIRST Tech Challenge Australian National Championship Day 1 [SXgSh_yhRdE].webm",
+        "../frames"
+    ).unwrap();
+}
