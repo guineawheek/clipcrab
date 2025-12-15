@@ -72,7 +72,6 @@ pub struct DecodeDetector {
     not_a_preview_detector: TemplateMatcher,
     match_phase_detector: MatchPhaseDetector,
     match_name_ocr: Ocr,
-    text_ocr: Ocr,
     number_ocr: Ocr,
     match_time_ocr: Ocr,
 }
@@ -88,7 +87,6 @@ impl DecodeDetector {
             not_a_preview_detector: TemplateMatcher::new(blue_score_img, Size::res_1080p(), Size::new(1280.0, 720.0), 0.5),
             match_phase_detector: MatchPhaseDetector::new(),
             match_name_ocr: Ocr::new(Some("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")),
-            text_ocr: Ocr::new(None),
             number_ocr: Ocr::new(Some("0123456789")),
             match_time_ocr: Ocr::new(Some("012345679:")),
         }
@@ -182,7 +180,7 @@ impl DecodeDetector {
             Point::new(MATCH_NAME_X, match_display_tl.y - NAME_BAR_HEIGHT + 10.0/1080.0),
             Size::new(MATCH_NAME_WIDTH, NAME_BAR_HEIGHT - 15.0/1080.0)
         );
-        let match_name = self.text_ocr.extract_text(&roi);
+        let match_name = self.match_name_ocr.extract_text(&roi);
 
         tracing::trace!("Detected match name: {match_name:?}");
         if match_name.contains("Example") {

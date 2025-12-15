@@ -1,4 +1,3 @@
-use opencv::core::{MatTraitConst, MatTraitConstManual};
 
 fn main() {
     tracing_subscriber::fmt::init();
