@@ -1,4 +1,4 @@
-use opencv::{imgproc, core as cvcore, prelude::*};
+use opencv::{core as cvcore, imgcodecs, imgproc, prelude::*};
 use crate::utils::*;
 
 /// Template match. All values are scaled 0.0..1.0 input image lengths as to be resolution agnostic.
@@ -16,8 +16,6 @@ pub struct TemplateMatcher {
     template: Mat,
     /// Relative size (0..1.0) of the template.
     rel_template_size: Size,
-    /// Size of screenshot the template was taken from (typically 1920x1080)
-    reference_size: Size,
     /// Size that both input and reference will be resized to for comparison (typically 1280x720)
     match_size: Size,
     /// Match template threshold
@@ -25,19 +23,16 @@ pub struct TemplateMatcher {
 }
 
 impl TemplateMatcher {
-    pub fn new(template_img: Mat, ref_size: Size, match_size: Size, threshold: f64) -> Self {
+    pub fn new(template_gray: Mat, ref_size: Size, match_size: Size, threshold: f64) -> Self {
         let (compare_x_ratio, compare_y_ratio) = (match_size.width() / ref_size.width(), match_size.width() / ref_size.width());
-
-        let template_gray = cvt_color(&template_img, imgproc::COLOR_BGR2GRAY);
         let scaled_template = resize(&template_gray, compare_x_ratio, compare_y_ratio);
-        let template_size = template_img.size().unwrap();
+        let template_size = template_gray.size().unwrap();
         Self {
             template: scaled_template,
             rel_template_size: Size::new(
                 template_size.width as f64 / ref_size.width(),
                 template_size.height as f64 / ref_size.height(),
             ),
-            reference_size: ref_size,
             match_size,
             threshold,
         }
@@ -57,20 +52,94 @@ impl TemplateMatcher {
             })
         } else {
             None
-        };
-
-        todo!()
+        }
     }
 
     /// Raw runs [`imgproc::match_template`] with the template.
     /// - frame: Mat of a full color frame
     pub fn match_template_raw(&self, frame: &Mat) -> Mat {
         let size: Size = frame.size().unwrap().into();
-        let frame_gray = cvt_color(frame, imgproc::COLOR_BGR2GRAY);
+        let frame_gray = cvt_color(frame, imgproc::COLOR_RGB2GRAY);
         let frame_resize = resize(&frame_gray, self.match_size.width() / size.width(), self.match_size.height() / size.height());
         
         let mut result = Mat::default();
         imgproc::match_template_def(&frame_resize, &self.template, &mut result,  imgproc::TM_CCOEFF_NORMED).unwrap();
         result
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchPhase {
+    /// Match not started yet.
+    NotStarted,
+    /// Autonomous period
+    Autonomous,
+    /// Auto-teleop transition
+    Transition,
+    /// Teleoperated period
+    Teleop,
+    /// Match ended.
+    Ended,
+}
+
+/// ITD onwards have similar sprites used for match phase signalling.
+#[derive(Debug)]
+pub struct MatchPhaseDetector {
+    autonomous_detector: TemplateMatcher,
+    teleop_detector: TemplateMatcher,
+    transition_detector: TemplateMatcher,
+}
+
+impl MatchPhaseDetector {
+    pub fn new() -> Self {
+        let autonomous = imgcodecs::imdecode(include_bytes!("../templates/autonomous.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
+        let teleop = imgcodecs::imdecode(include_bytes!("../templates/teleoperated.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
+        let transition = imgcodecs::imdecode(include_bytes!("../templates/transition.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
+        Self {
+            autonomous_detector: TemplateMatcher::new(autonomous, Size::res_1080p(), Size::res_1080p(), 0.6),
+            teleop_detector: TemplateMatcher::new(teleop, Size::res_1080p(), Size::res_1080p(), 0.6),
+            transition_detector: TemplateMatcher::new(transition, Size::res_1080p(), Size::res_1080p(), 0.6),
+        }
+    }
+
+    /// Detect match phase.
+    /// 
+    /// `roi` - ROI where match phase symbols get displayed
+    /// `timestamp` - Detected timestamp, in seconds. E.g. 2:15 gets turned into 120 + 15 = 135
+    pub fn detect_match_phase(&self, roi: &Mat, timestamp: u64) -> Option<MatchPhase> {
+        Some(match timestamp {
+            151.. => {
+                // Timestamp is above 2 minutes 30 seconds (invalid)
+                return None;
+            }
+            150 => {
+                // Match timer still shows 2:30
+                if self.autonomous_detector.matches(roi).is_some() {
+                    MatchPhase::Autonomous
+                } else {
+                    MatchPhase::NotStarted
+                }
+            }
+            121..150 => {
+                // Match timer is between 2:30 and 2:01 inclusive.
+                MatchPhase::Autonomous
+            }
+            1..=8 => {
+                // Possibly the 8-second transition period, need to check explicitly.
+                if self.transition_detector.matches(roi).is_some() {
+                    MatchPhase::Transition
+                } else {
+                    MatchPhase::Teleop
+                }
+            }
+            0 => {
+                // Zero always displays as end of match.
+                MatchPhase::Ended
+            }
+            _ => {
+                // Anything else from 0:09..2:00 is likely teleop
+                MatchPhase::Teleop
+            }
+        })
     }
 }
