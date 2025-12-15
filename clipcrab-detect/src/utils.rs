@@ -1,7 +1,7 @@
 
 use std::ops::Mul;
 
-use opencv::{core as cvcore, highgui, imgproc, prelude::*};
+use opencv::{core as cvcore, highgui, imgcodecs, imgproc, prelude::*};
 
 use crate::matchers::TemplateMatch;
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -197,4 +197,17 @@ pub fn display_mat(name: &str, mat: &Mat) {
     highgui::named_window(name, highgui::WINDOW_AUTOSIZE).unwrap();
     highgui::imshow(name, mat).unwrap();
     highgui::wait_key_def().unwrap();
+}
+
+/// we work on rgb images usually so we have to re-bgr them
+pub fn imwrite(fname: &str, mat: &Mat) {
+    let bgr = cvt_color(mat, imgproc::COLOR_RGB2BGR);
+    imgcodecs::imwrite_def(fname, &bgr).unwrap();
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MatchDisplayInfo {
+    pub red_alliance: Vec<u64>,
+    pub blue_alliance: Vec<u64>,
+    pub display_flipped: bool,
 }

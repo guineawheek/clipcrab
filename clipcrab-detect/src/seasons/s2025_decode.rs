@@ -9,9 +9,9 @@
 //! - It is the full height of the name bar.
 //! - It extends right up to the edge between it and the match name box on the left, and 72 pixels away from the right edge.
 //! 
-use opencv::{core::{self as cvcore, Mat, MatTraitConst}, imgcodecs};
+use opencv::{core::{self as cvcore, Mat, MatTraitConst}, imgcodecs, imgproc};
 
-use crate::{matchers::{MatchPhaseDetector, TemplateMatcher}, ocr::Ocr, utils::{self, Point, Size}};
+use crate::{matchers::{MatchPhaseDetector, TemplateMatcher}, ocr::Ocr, utils::{self, MatchDisplayInfo, Point, Size}};
 
 // 1080p-relative coordinates
 macro_rules! scale_x {
@@ -42,7 +42,16 @@ scale_x!(MATCH_NAME_WIDTH = 670);
 scale_y!(SCORING_DISPLAY_HEIGHT = 180);
 
 // Width of an alliance-specific scoring display (from edge of screen to the team alliance list)
-scale_x!(ALLIANCE_SCORING_WIDTH = 480);
+scale_x!(ALLIANCE_SCORING_WIDTH = 490);
+
+// Width of the alliance listing window
+scale_x!(ALLIANCE_NUMBER_WIDTH = 142);
+
+// Height of the lip between the top of the scoring display and the actual display
+const SCORING_BAR_LIP_HEIGHT: f64 = 30.0 / 180.0;
+
+// Threshold at which a scoring box is considered blue.
+const SCORE_BLUE_THRESHOLD: f64 = 0.7;
 
 // X-offset from left of scoring display to timer ROI
 scale_x!(TIMER_X = 860);
@@ -85,21 +94,58 @@ impl DecodeDetector {
         }
     }
 
-    fn extract_display_data(&self, scoring_display: &Mat) {
-        // Left side of scoring display
-        let left_display = utils::relative_extract_roi(
+    fn extract_display_data(&self, scoring_display: &Mat) -> MatchDisplayInfo {
+        // Left alliance
+        let left_alliance = utils::relative_extract_roi(
             scoring_display, 
             None,
-            Point::new(0.0, 0.0),
-            Size::new(ALLIANCE_SCORING_WIDTH, 1.0)
+            Point::new(ALLIANCE_SCORING_WIDTH, SCORING_BAR_LIP_HEIGHT),
+            Size::new(ALLIANCE_NUMBER_WIDTH, 1.0 - SCORING_BAR_LIP_HEIGHT)
         );
-        // Right side of scoring display
-        let left_display = utils::relative_extract_roi(
+        // Right alliance
+        let right_alliance = utils::relative_extract_roi(
             scoring_display, 
             None,
-            Point::new(1.0, 0.0),
-            Size::new(0.0, ALLIANCE_SCORING_WIDTH)
+            Point::new(1.0 - ALLIANCE_SCORING_WIDTH - ALLIANCE_NUMBER_WIDTH, SCORING_BAR_LIP_HEIGHT),
+            Size::new(ALLIANCE_NUMBER_WIDTH, 1.0 - SCORING_BAR_LIP_HEIGHT)
         );
+        let left_teams = self.number_ocr
+            .extract_text(&left_alliance)
+            .split('\n')
+            .map(|f| f.parse::<u64>().unwrap_or(0))
+            .collect::<Vec<u64>>();
+        let right_teams = self.number_ocr
+            .extract_text(&right_alliance)
+            .split('\n')
+            .map(|f| f.parse::<u64>().unwrap_or(0))
+            .collect::<Vec<u64>>();
+
+        // To determine red-blue switch, we need to determine whether blue is flipped to the other side or not.
+        // We do this by determining how much blue there is in the left total score box, which is usually red.
+        let scoring_box = utils::relative_extract_roi(
+            scoring_display, 
+            None, 
+            Point::new(ALLIANCE_SCORING_WIDTH + ALLIANCE_NUMBER_WIDTH, 0.0), 
+            //Point::new(0.5 + TIMER_WIDTH / 2.0, 0.0),
+            Size::new(0.5 - TIMER_WIDTH / 2.0 - ALLIANCE_SCORING_WIDTH - ALLIANCE_NUMBER_WIDTH, 1.0)
+        );
+        utils::imwrite("target/test.png", &scoring_box);
+
+        let hsv = utils::cvt_color(&scoring_box, imgproc::COLOR_RGB2HSV);
+        let mut thr = Mat::default();
+        cvcore::in_range(&hsv, &[98_u8, 0_u8, 0_u8], &[108_u8, 255_u8, 255_u8], &mut thr).unwrap();
+        let non_zero = cvcore::count_non_zero(&thr).unwrap() as f64;
+        let blue_score = non_zero / (scoring_box.size().unwrap().area() as f64);
+
+        tracing::trace!("Blue score: {blue_score}");
+
+        if blue_score > SCORE_BLUE_THRESHOLD {
+            MatchDisplayInfo { red_alliance: right_teams, blue_alliance: left_teams, display_flipped: true }
+        } else {
+            MatchDisplayInfo { red_alliance: left_teams, blue_alliance: right_teams, display_flipped: false }
+        }
+
+
     }
 
     pub fn detect(&self, frame: &Mat) -> Option<()> {
@@ -150,10 +196,9 @@ impl DecodeDetector {
             Point::new(TIMER_X, TIMER_Y),
             Size::new(TIMER_WIDTH, TIMER_HEIGHT)
         );
-        imgcodecs::imwrite_def("target/test.png", &roi).unwrap();
 
         let match_time = self.match_time_ocr.extract_text(&roi);
-        tracing::trace!("Detected match time: {match_time}");
+        tracing::trace!("Detected match time: {match_time:?}");
         let match_seconds = utils::match_time_to_seconds(&match_time)?;
         tracing::trace!("Detected match seconds: {match_seconds}");
         // Step 6: determine the phase of the match
@@ -167,7 +212,8 @@ impl DecodeDetector {
         tracing::trace!("Detected match phase: {phase:?}");
 
         // Step 7: extract the teams in this match
-
+        let display_info = self.extract_display_data(&scoring_display);
+        tracing::trace!("Display info: {display_info:?}");
 
         Some(())
     }

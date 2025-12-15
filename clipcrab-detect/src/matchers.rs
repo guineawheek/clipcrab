@@ -86,23 +86,22 @@ pub enum MatchPhase {
 #[derive(Debug)]
 pub struct MatchPhaseDetector {
     autonomous_detector: TemplateMatcher,
-    teleop_detector: TemplateMatcher,
     transition_detector: TemplateMatcher,
 }
 
 impl MatchPhaseDetector {
     pub fn new() -> Self {
         let autonomous = imgcodecs::imdecode(include_bytes!("../templates/autonomous.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
-        let teleop = imgcodecs::imdecode(include_bytes!("../templates/teleoperated.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
         let transition = imgcodecs::imdecode(include_bytes!("../templates/transition.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
         Self {
             autonomous_detector: TemplateMatcher::new(autonomous, Size::res_1080p(), Size::res_1080p(), 0.6),
-            teleop_detector: TemplateMatcher::new(teleop, Size::res_1080p(), Size::res_1080p(), 0.6),
             transition_detector: TemplateMatcher::new(transition, Size::res_1080p(), Size::res_1080p(), 0.6),
         }
     }
 
     /// Detect match phase.
+    /// 
+    /// The logic here tries to avoid using CV if possible.
     /// 
     /// `roi` - ROI where match phase symbols get displayed
     /// `timestamp` - Detected timestamp, in seconds. E.g. 2:15 gets turned into 120 + 15 = 135
