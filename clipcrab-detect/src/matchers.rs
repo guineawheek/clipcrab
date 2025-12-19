@@ -1,5 +1,5 @@
 use opencv::{core as cvcore, imgcodecs, imgproc, prelude::*};
-use crate::utils::*;
+use crate::{MatchPhase, utils::*};
 
 /// Template match. All values are scaled 0.0..1.0 input image lengths as to be resolution agnostic.
 
@@ -66,20 +66,6 @@ impl TemplateMatcher {
         imgproc::match_template_def(&frame_resize, &self.template, &mut result,  imgproc::TM_CCOEFF_NORMED).unwrap();
         result
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchPhase {
-    /// Match not started yet.
-    NotStarted,
-    /// Autonomous period
-    Autonomous,
-    /// Auto-teleop transition
-    Transition,
-    /// Teleoperated period
-    Teleop,
-    /// Match ended.
-    Ended,
 }
 
 /// ITD onwards have similar sprites used for match phase signalling.

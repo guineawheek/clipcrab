@@ -204,10 +204,3 @@ pub fn imwrite(fname: &str, mat: &Mat) {
     let bgr = cvt_color(mat, imgproc::COLOR_RGB2BGR);
     imgcodecs::imwrite_def(fname, &bgr).unwrap();
 }
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct MatchDisplayInfo {
-    pub red_alliance: Vec<u64>,
-    pub blue_alliance: Vec<u64>,
-    pub display_flipped: bool,
-}

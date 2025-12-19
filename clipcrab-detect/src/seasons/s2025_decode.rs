@@ -11,7 +11,8 @@
 //! 
 use opencv::{core::{self as cvcore, Mat, MatTraitConst}, imgcodecs, imgproc};
 
-use crate::{matchers::{MatchPhaseDetector, TemplateMatcher}, ocr::Ocr, utils::{self, MatchDisplayInfo, Point, Size}};
+use crate::{matchers::{MatchPhaseDetector, TemplateMatcher}, ocr::Ocr, utils::{self, Point, Size}};
+use crate::{MatchDisplayInfo, MatchDetection};
 
 // 1080p-relative coordinates
 macro_rules! scale_x {
@@ -61,7 +62,7 @@ scale_x!(TIMER_WIDTH = 200);
 // Y-offset from top of scoring display to timer ROI
 scale_y!(TIMER_Y = 50);
 // Height of timer text ROI
-scale_y!(TIMER_HEIGHT = 80);
+scale_y!(TIMER_HEIGHT = 85);
 // Height of timer phase ROI
 scale_y!(TIMER_PHASE_HEIGHT = 56);
 
@@ -86,7 +87,7 @@ impl DecodeDetector {
             logo_detector: TemplateMatcher::new(template_img, Size::res_1080p(), Size::new(1280.0, 720.0), 0.7),
             not_a_preview_detector: TemplateMatcher::new(blue_score_img, Size::res_1080p(), Size::new(1280.0, 720.0), 0.5),
             match_phase_detector: MatchPhaseDetector::new(),
-            match_name_ocr: Ocr::new(Some("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")),
+            match_name_ocr: Ocr::new(Some("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")),
             number_ocr: Ocr::new(Some("0123456789")),
             match_time_ocr: Ocr::new(Some("012345679:")),
         }
@@ -118,8 +119,9 @@ impl DecodeDetector {
             .map(|f| f.parse::<u64>().unwrap_or(0))
             .collect::<Vec<u64>>();
 
-        // To determine red-blue switch, we need to determine whether blue is flipped to the other side or not.
-        // We do this by determining how much blue there is in the left total score box, which is usually red.
+        // To determine which alliances are red or blue, we need to determine whether blue is flipped to the other side or not.
+        // We do this by determining how much blue there is in the left total score box,
+        // which is usually red on non-flipped displays.
         let scoring_box = utils::relative_extract_roi(
             scoring_display, 
             None, 
@@ -127,7 +129,6 @@ impl DecodeDetector {
             //Point::new(0.5 + TIMER_WIDTH / 2.0, 0.0),
             Size::new(0.5 - TIMER_WIDTH / 2.0 - ALLIANCE_SCORING_WIDTH - ALLIANCE_NUMBER_WIDTH, 1.0)
         );
-        utils::imwrite("target/test.png", &scoring_box);
 
         let hsv = utils::cvt_color(&scoring_box, imgproc::COLOR_RGB2HSV);
         let mut thr = Mat::default();
@@ -135,7 +136,7 @@ impl DecodeDetector {
         let non_zero = cvcore::count_non_zero(&thr).unwrap() as f64;
         let blue_score = non_zero / (scoring_box.size().unwrap().area() as f64);
 
-        tracing::trace!("Blue score: {blue_score}");
+        tracing::trace!("Display flipped confidence score: {blue_score}");
 
         if blue_score > SCORE_BLUE_THRESHOLD {
             MatchDisplayInfo { red_alliance: right_teams, blue_alliance: left_teams, display_flipped: true }
@@ -146,7 +147,7 @@ impl DecodeDetector {
 
     }
 
-    pub fn detect(&self, frame: &Mat) -> Option<()> {
+    pub fn detect(&self, frame: &Mat) -> Option<MatchDetection> {
         // Step 1: find the logo.
         let Some(logo) = self.logo_detector.matches(frame) else {
             tracing::trace!("No match found!");
@@ -195,7 +196,10 @@ impl DecodeDetector {
             Size::new(TIMER_WIDTH, TIMER_HEIGHT)
         );
 
+        //utils::imwrite("target/test.png", &roi);
         let match_time = self.match_time_ocr.extract_text(&roi);
+        //self.match_time_ocr.extract_text_debug(&roi);
+
         tracing::trace!("Detected match time: {match_time:?}");
         let match_seconds = utils::match_time_to_seconds(&match_time)?;
         tracing::trace!("Detected match seconds: {match_seconds}");
@@ -213,7 +217,12 @@ impl DecodeDetector {
         let display_info = self.extract_display_data(&scoring_display);
         tracing::trace!("Display info: {display_info:?}");
 
-        Some(())
+        Some(MatchDetection {
+            name: match_name,
+            time: match_seconds,
+            phase,
+            display_info
+        })
     }
 }
 

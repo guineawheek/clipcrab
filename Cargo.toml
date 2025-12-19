@@ -8,6 +8,7 @@ edition = "2024"
 
 [dependencies]
 clipcrab-detect = { path = "./clipcrab-detect" }
-opencv = "0.97.2"
+opencv = "0.98.0"
 image = "0.25.9"
 tracing-subscriber = "0.3.22"
+clap = { version = "4.5.53", features = ["derive"] }

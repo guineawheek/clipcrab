@@ -13,10 +13,44 @@ matchinator/clipfarm CV/OCR backend, written in rust
 
 ## how build
 
-Install ffmpeg (we call this externally because nobody wants to call ffmpeg from the API)
-Go to `clipcrab-detect/text_models` and run `download-models.sh` to get the OCR models
+Install ffmpeg and opencv
 
-Then you can do a `cargo build --release`
+`cd` to `clipcrab-detect/text_models` and run `./download-models.sh` to get the OCR models
+
+Then you can do a `cargo build --release` in wherever
+
+## how use
+
+### `clipcrab-detect`
+
+`clipcrab-detect` contains the main match display detector.
+It's both a library and a standalone application. 
+
+When run as a standalone application, it spits out JSON on a detect, or `null` otherwise.
+
+```shell
+$ cargo run -p clipcrab-detect --release -- season-2025decode frames/frame_001395.bmp
+{
+  "name": "Qualification 1 of 63",
+  "time": 114,
+  "phase": "Teleop",
+  "display_info": {
+    "red_alliance": [
+      24089,
+      31784
+    ],
+    "blue_alliance": [
+      31243,
+      18306
+    ],
+    "display_flipped": false
+  }
+}
+```
+
+## unwrap usage
+
+this code unwraps pretty liberally. if you panic there it's a bug anyway that needs to get fixed.
 
 ## license
 
