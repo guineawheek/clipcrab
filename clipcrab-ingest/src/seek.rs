@@ -79,7 +79,7 @@ pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input) -> Result<Video,
             scaler.run(&decoded, &mut rgb_frame)?;
             decoder.send_eof()?;
 
-            return Ok(rgb_frame)
+            return Ok(rgb_frame);
         }
     }
     Err(ffmpeg::Error::StreamNotFound)

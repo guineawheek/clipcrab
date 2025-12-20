@@ -8,6 +8,7 @@ pub mod matchers;
 pub mod utils;
 pub mod seasons;
 pub mod ocr;
+pub mod qr;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

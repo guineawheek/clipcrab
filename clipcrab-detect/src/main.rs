@@ -4,6 +4,8 @@ use clap::Parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 enum Detector {
+    /// match-result-qr
+    MatchResultQR,
     /// seasson2025-decode
     Season2025Decode,
 }
@@ -23,6 +25,11 @@ fn main() {
     ).unwrap();
 
     let detection = match cli.detector {
+        Detector::MatchResultQR => {
+            let detection = clipcrab_detect::qr::detect_qr(&frame);
+            write!(std::io::stdout(), "{}", serde_json::to_string_pretty(&detection).unwrap()).unwrap();
+            return;
+        }
         Detector::Season2025Decode => {
             let detector = clipcrab_detect::seasons::s2025_decode::DecodeDetector::new();
             detector.detect(&frame)
