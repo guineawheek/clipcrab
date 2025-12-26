@@ -1,6 +1,6 @@
 use opencv::{core::{Mat, MatTraitConst}, imgproc};
 
-use crate::utils::{self, Point, Size};
+use crate::{MatchKey, utils::{self, Point, Size}};
 
 pub fn detect_qr(mat: &Mat) -> Option<FTCEventsQR> {
     // the coordinates assume that the qr code is in the same spot every time in a full-screen setting. 
@@ -55,24 +55,10 @@ pub fn detect_qr(mat: &Mat) -> Option<FTCEventsQR> {
     None
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum MatchType {
-    Qualification {
-        /// Match number
-        num: u64
-    },
-    Playoff {
-        /// Match number
-        num: u64,
-        /// Tiebreaker count. Tiebreaker matches are those with a count greater than 1.
-        tiebreaker: u64,
-    },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FTCEventsQR {
     pub event_code: String,
-    pub match_type: MatchType,
+    pub key: MatchKey,
 }
 
 impl FTCEventsQR {
@@ -85,10 +71,10 @@ impl FTCEventsQR {
         let path = url.path_segments().ok_or(anyhow::anyhow!("No path segments!"))?.collect::<Vec<&str>>();
         let (event_code, match_type) = match path[..] {
             [event_code, "qualifications", num, ..] => {
-                (event_code.to_string(), MatchType::Qualification { num: num.parse()? })
+                (event_code.to_string(), MatchKey::Qualification { num: num.parse()? })
             }
             [event_code, "playoffs", num, tiebreaker, ..] => {
-                (event_code.to_string(), MatchType::Playoff { num: num.parse()?, tiebreaker: tiebreaker.parse()? })
+                (event_code.to_string(), MatchKey::Playoff { num: num.parse()?, tiebreaker: tiebreaker.parse()? })
             }
             _ => {
                 tracing::warn!("Unparsable FTC-Events URL `{url}`, possibly a bug!!!");
@@ -98,7 +84,7 @@ impl FTCEventsQR {
 
         Ok(Self {
             event_code,
-            match_type,
+            key: match_type,
         })
     }
 }

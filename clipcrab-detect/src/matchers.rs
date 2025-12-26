@@ -91,7 +91,7 @@ impl MatchPhaseDetector {
     /// 
     /// `roi` - ROI where match phase symbols get displayed
     /// `timestamp` - Detected timestamp, in seconds. E.g. 2:15 gets turned into 120 + 15 = 135
-    pub fn detect_match_phase(&self, roi: &Mat, timestamp: u64) -> Option<MatchPhase> {
+    pub fn detect_match_phase(&self, roi: &Mat, timestamp: i64) -> Option<MatchPhase> {
         Some(match timestamp {
             151.. => {
                 // Timestamp is above 2 minutes 30 seconds (invalid)

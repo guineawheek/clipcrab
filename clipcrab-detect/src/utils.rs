@@ -181,13 +181,13 @@ impl RoiPad {
     }
 }
 
-pub fn match_time_to_seconds(time: &str) -> Option<u64> {
+pub fn match_time_to_seconds(time: &str) -> Option<i64> {
     let time = time.replace("\n", "");
     match time.split(':').collect::<Vec<&str>>().as_slice() {
         [min, sec, ..] => {
             let min = min.parse::<u64>().ok()?;
             let sec = sec.parse::<u64>().ok()?;
-            Some(min * 60 + sec)
+            Some((min * 60 + sec) as i64)
         }
         _ => None,
     }
