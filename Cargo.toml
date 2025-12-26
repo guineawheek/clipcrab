@@ -1,5 +1,5 @@
 [workspace]
-members = ["clipcrab-detect","clipcrab-ingest"]
+members = ["clipcrab-detect","clipcrab-io"]
 
 [package]
 name = "clipcrab"

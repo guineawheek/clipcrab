@@ -41,6 +41,12 @@ impl<T> PartialEq for WithTime<T> {
 }
 impl<T> Eq for WithTime<T> {}
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MatchResultTimes {
+    pub start: i64,
+    pub end: i64,
+}
+
 
 #[derive(Debug)]
 pub struct Match {
@@ -93,8 +99,6 @@ impl Match {
 
     pub fn add_results_screen(&mut self, time_us: i64) {
         self.result_screen_detects.insert(time_us);
-        //self.result_screen_earliest = Some(self.result_screen_earliest.map(|v| v.min(time_us)).unwrap_or(time_us));
-        //self.result_screen_latest = Some(self.result_screen_latest.map(|v| v.max(time_us)).unwrap_or(time_us));
     }
 
     pub fn calc_start(&mut self) {
@@ -141,20 +145,26 @@ impl Match {
         }
     }
 
-    pub fn calc_result_screen_search_space(&self) -> (Option<i64>, Option<i64>) {
-        if self.result_screen_detects.is_empty() {
-            // pick the last known match detect (if any) for start, unbounded for end
-            (self.during_detects.last().map(|d| d.frame_ts_us), None)
-        } else {
-            // here we cluster to find segments where each point is less than 5 seconds apart
-            let clusters = cluster_times(
-                self.result_screen_detects.iter(),
-                |value, cluster| {
-                    (value - cluster.last().unwrap()).abs() > 5_000_000
-                }
-            );
-            todo!()
-        }
+    pub fn calc_result_screen(&self) -> Option<MatchResultTimes> {
+        // here we cluster to find segments where each point is less than 5 seconds apart
+        let clusters = cluster_times(
+            self.result_screen_detects.iter(),
+            |value, cluster| {
+                (value - cluster.last().unwrap()).abs() > 5_000_000
+            }
+        );
+        let last_cluster = clusters.iter().filter(|v| v.len() >= 3).last()?;
+        /*
+        results_start = results_screen.start_ts - consts.PRE_RESULT_FINE - consts.PRE_RESULT_COARSE - offset
+        results_end = min(results_screen.start_ts + consts.POST_SCORE_DETECT, results_screen.end_ts - 2) - offset 
+         */
+
+        // TODO: pull out these constants and make them season-dependent
+        let (first, last) = (last_cluster[0], *last_cluster.last().unwrap());
+        Some(MatchResultTimes {
+            start: first - 13_000_000,
+            end: (first + 12_000_0000).min(last - 2_000_000),
+        })
     }
 }
 

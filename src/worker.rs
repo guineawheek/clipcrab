@@ -33,8 +33,7 @@ Event struct:
 pub enum Task {
     /// Analyze a frame at the microsecond timestamp.
     AnalyzeFrame(i64),
-    /// Check for a QR result code at the microsecond timestamp.
-    CheckQROnly(i64),
+    ClipMatch(),
     Done,
 }
 
@@ -56,7 +55,7 @@ pub struct TaskSubmission {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 enum ProjectState {
     InitialScan,
-    FindResultScreens(i64),
+    ClipMatches,
     Done,
 }
 
@@ -77,6 +76,8 @@ impl OfflineEventProject {
             duration_us,
             next_tasks: (0..duration_us)
                 // every 1s screw it 
+                // efficient? no. but it's gonna take weeks to figure out the logic to do this more efficiently
+                // and scaling up compute is easy
                 .step_by(1_000_000)
                 .map(Task::AnalyzeFrame)
                 .collect(),
@@ -96,30 +97,21 @@ impl OfflineEventProject {
             return None;
         }
 
-        /*
-        If we have end screen captures...
-
-        take the last group (section threshold 1m) 
-        take the first screenshot
-        use it as upper bound
-
-        use the last screenshot of HUD detects (before this) as lower bound
-        OR 1 minute before
-
-        If we don't have end screen captures, creep forward in time from the last match capture
-        until a match result screen of a higher key quantity is found, in which case give up.
-        
-         */
-
         let state = self.state;
         match state {
             ProjectState::InitialScan => {
-                for match_state in self.matches.values_mut() {
-                    match_state.calc_start();
-                }
+                self.state = ProjectState::ClipMatches;
             }
-            ProjectState::FindResultScreens(_) => todo!(),
-            ProjectState::Done => todo!(),
+            ProjectState::ClipMatches => {
+                todo!()
+            }
+            ProjectState::Done => {}
+        }
+        if let Some(next) = self.next_tasks.pop_front() {
+            self.in_flight.insert(next);
+            Some(next)
+        } else {
+            None
         }
     }
 
@@ -151,7 +143,7 @@ impl OfflineEventProject {
                     }
                 }
             }
-            ProjectState::FindResultScreens(_) => todo!(),
+            ProjectState::ClipMatches => todo!(),
             ProjectState::Done => todo!(),
         }
     }

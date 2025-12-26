@@ -72,7 +72,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "clipcrab-ingest"
+name = "clipcrab-io"
 version = "0.1.0"
 dependencies = [
  "ffmpeg-next",

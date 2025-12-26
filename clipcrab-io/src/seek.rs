@@ -48,6 +48,35 @@ pub fn seek_test(p: impl AsRef<Path>) -> Result<(), ffmpeg::Error> {
     Ok(())
 }
 
+pub struct FFMpegger {
+    pub ictx: ffmpeg::format::context::Input,
+    pub duration_us: i64,
+}
+
+impl FFMpegger {
+    pub fn new(p: &Path) -> Result<Self, ffmpeg::Error> {
+        let ictx = input(p)?;
+        let duration_us = ictx.duration();
+        Ok(
+            Self {
+                ictx,
+                duration_us,
+            }
+        )
+    }
+
+    pub fn duration_us(&self) -> i64 {
+        self.duration_us
+    }
+
+    pub fn extract_mat(&mut self, ts: i64) -> Result<opencv::core::Mat, anyhow::Error> {
+        self.ictx.seek(ts, ..ts)?;
+        let frame = extract_frame(&mut self.ictx)?;
+        let mat = conv_to_mat(&frame)?;
+        Ok(mat)
+    }
+}
+
 /// Extracts a frame from the current position in the input file.
 pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input) -> Result<Video, ffmpeg::Error> {
     let input = ictx

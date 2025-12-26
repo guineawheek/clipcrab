@@ -1,6 +1,6 @@
 
 pub fn main() {
-    clipcrab_ingest::seek::seek_test(
+    clipcrab_io::seek::seek_test(
         "/disk/guinea/first/2026/FIRST Tech Challenge Australian National Championship Day 1 [SXgSh_yhRdE].webm",
     ).unwrap();
 
