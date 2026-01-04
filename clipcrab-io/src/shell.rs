@@ -59,3 +59,31 @@ pub fn ingest(fname: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<(), a
 
     Ok(())
 }
+
+pub fn clip_segments(
+    input_file: &Path,
+    output_file: &Path,
+    pairs: &[(i64, i64)], // start, duration
+) {
+    let mut ffmpeg_incantation_of_god = new_ffmpeg();
+
+    for (start, duration) in pairs {
+
+        ffmpeg_incantation_of_god.arg("-ss");
+        ffmpeg_incantation_of_god.arg(format!("{}", *start as f64 / 1_000_000.0));
+        ffmpeg_incantation_of_god.arg("-t");
+        ffmpeg_incantation_of_god.arg(format!("{}", *duration as f64 / 1_000_000.0));
+        ffmpeg_incantation_of_god.arg("-i");
+        ffmpeg_incantation_of_god.arg(input_file);
+    }
+
+    ffmpeg_incantation_of_god.arg("-filter_complex");
+    let filter: String = (0..pairs.len())
+        .map(|i| format!("[{i}]"))
+        .chain([format!("concat=n={}:v=1:a=1[out];[out]setpts=PTS-STARTPTS", pairs.len())])
+        .collect();
+
+    ffmpeg_incantation_of_god.arg(&filter);
+    ffmpeg_incantation_of_god.args(["-c:a", "libopus", "-b", "96000", "-c:v", "libsvtav1", "-crf", "23"]);
+    ffmpeg_incantation_of_god.arg(output_file);
+}
