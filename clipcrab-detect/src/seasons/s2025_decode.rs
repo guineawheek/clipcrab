@@ -89,7 +89,7 @@ impl DecodeDetector {
             match_phase_detector: MatchPhaseDetector::new(),
             match_name_ocr: Ocr::new(Some("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")),
             number_ocr: Ocr::new(Some("0123456789")),
-            match_time_ocr: Ocr::new(Some("012345679:")),
+            match_time_ocr: Ocr::new(Some("0123456789:")),
         }
     }
 
@@ -149,7 +149,7 @@ impl DecodeDetector {
 
     pub fn detect(&self, frame: &Mat) -> Option<MatchDetection> {
         // Step 1: find the logo.
-        let Some(logo) = self.logo_detector.matches(frame) else {
+        let Some(logo) = self.logo_detector.matches(frame, None) else {
             tracing::trace!("No match found!");
             return None;
         };
@@ -169,7 +169,7 @@ impl DecodeDetector {
         );
 
         // Step 3: check if the match is a preview match
-        if self.not_a_preview_detector.matches(frame).is_none() {
+        if self.not_a_preview_detector.matches(frame, None).is_none() {
             tracing::trace!("Found scoring display, but this is not a match!");
             return None;
         }
@@ -196,7 +196,7 @@ impl DecodeDetector {
             Size::new(TIMER_WIDTH, TIMER_HEIGHT)
         );
 
-        //utils::imwrite("target/test.png", &roi);
+        //utils::imwrite("target/match_roi.png", &roi);
         let match_time = self.match_time_ocr.extract_text(&roi);
         //self.match_time_ocr.extract_text_debug(&roi);
 
@@ -210,7 +210,8 @@ impl DecodeDetector {
             Point::new(TIMER_X, 0.0),
             Size::new(TIMER_WIDTH, TIMER_PHASE_HEIGHT)
         );
-        let phase = self.match_phase_detector.detect_match_phase(&roi, match_seconds)?;
+        utils::imwrite("target/phase_roi.png", &roi);
+        let phase = self.match_phase_detector.detect_match_phase(&roi, frame_size.into(), match_seconds)?;
         tracing::trace!("Detected match phase: {phase:?}");
 
         // Step 7: extract the teams in this match
@@ -226,4 +227,8 @@ impl DecodeDetector {
     }
 }
 
-
+impl crate::Detector for DecodeDetector {
+    fn detect(&self, frame: &Mat) -> Option<MatchDetection> {
+        self.detect(frame)
+    }
+}

@@ -32,8 +32,7 @@ pub fn seek_test(p: impl AsRef<Path>) -> Result<(), ffmpeg::Error> {
     let mut cnt = 0_u64;
 
     for sec in (0..duration_us).step_by(AV_TIME_BASE as usize * 15) {
-        ictx.seek(sec, ..sec)?;
-        let frame = extract_frame(&mut ictx)?;
+        let frame = extract_frame(&mut ictx, sec)?;
         let _ = conv_to_mat(&frame).unwrap();
         force_opt = force_opt.wrapping_add(frame.data(0).len());
 
@@ -70,15 +69,15 @@ impl FFMpegger {
     }
 
     pub fn extract_mat(&mut self, ts: i64) -> Result<opencv::core::Mat, anyhow::Error> {
-        self.ictx.seek(ts, ..ts)?;
-        let frame = extract_frame(&mut self.ictx)?;
+        let frame = extract_frame(&mut self.ictx, ts)?;
         let mat = conv_to_mat(&frame)?;
         Ok(mat)
     }
 }
 
-/// Extracts a frame from the current position in the input file.
-pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input) -> Result<Video, ffmpeg::Error> {
+/// Extracts a frame from the ts in the input file.
+pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input, ts: i64) -> Result<Video, ffmpeg::Error> {
+    ictx.seek(ts, ..ts)?;
     let input = ictx
         .streams()
         .best(Type::Video)
@@ -87,6 +86,7 @@ pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input) -> Result<Video,
 
     let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
     let mut decoder = context_decoder.decoder().video()?;
+    let time_base = input.time_base();
 
     // this has the nice side effect of making sure everything is rgb24
     let mut scaler = Context::get(
@@ -99,16 +99,19 @@ pub fn extract_frame(ictx: &mut ffmpeg::format::context::Input) -> Result<Video,
         Flags::FAST_BILINEAR,
     )?;
 
+    let mut decoded = Video::empty();
     for (stream, packet) in ictx.packets() {
         if stream.index() == video_stream_index {
             decoder.send_packet(&packet)?;
-            let mut decoded = Video::empty();
             decoder.receive_frame(&mut decoded)?;
-            let mut rgb_frame = Video::empty();
-            scaler.run(&decoded, &mut rgb_frame)?;
-            decoder.send_eof()?;
-
-            return Ok(rgb_frame);
+            if decoded.timestamp().map_or(ts, |dts| {
+                f64::from(ffmpeg::Rational::new(dts as i32, 1) / time_base) as i64
+            }) >= ts {
+                let mut rgb_frame = Video::empty();
+                scaler.run(&decoded, &mut rgb_frame)?;
+                decoder.send_eof()?;
+                return Ok(rgb_frame);
+            }
         }
     }
     Err(ffmpeg::Error::StreamNotFound)

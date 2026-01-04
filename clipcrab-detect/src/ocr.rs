@@ -1,4 +1,6 @@
 
+use std::time::Instant;
+
 use ocrs::{OcrEngine, OcrEngineParams};
 use opencv::core::{Mat, MatTraitConst, MatTraitConstManual};
 
@@ -27,8 +29,13 @@ impl Ocr {
     /// Extracts text from an RGBu8 ordered mat.
     /// Lines are separated by newlines.
     pub fn extract_text(&self, img: &Mat) -> String {
+        let start = Instant::now();
         let input = self.rgb2input(img);
-        self.engine.get_text(&input).unwrap_or_default()
+        let result = self.engine.get_text(&input).unwrap_or_default();
+
+        tracing::trace!("Detected {result:?} in {:.3} ms", (Instant::now() - start).as_secs_f64() * 1000.0);
+
+        result
     }
 
     pub fn extract_text_debug(&self, img: &Mat) {

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use clipcrab_detect::{MatchDetection, MatchKey, qr::FTCEventsQR};
 
-use crate::model::{Match, WithTime};
+use crate::model::{Match, Segment, WithTime};
 
 /*
 Basic flow:
@@ -28,26 +28,65 @@ Event struct:
 
 
 */
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub struct ClipMatchRequest {
+    pub key: MatchKey,
+    pub match_segment: Segment,
+    pub result_segment: Option<Segment>,
+}
+
+fn pprint_ts(ts: i64) -> String {
+    format!("{:02}:{:02}:{:02}.{:06}", 
+        ts / (3600 * 1_000_000),
+        ts / (60 * 1_000_000) % 60,
+        ts / (1_000_000) % 60,
+        ts % 1_000_000
+    )
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Task {
     /// Analyze a frame at the microsecond timestamp.
     AnalyzeFrame(i64),
-    ClipMatch(),
+    ClipMatch(ClipMatchRequest),
     Done,
+}
+
+impl core::fmt::Display for Task {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Task::AnalyzeFrame(ts) => {
+                let ts = *ts;
+                f.debug_tuple("AnalyzeFrame")
+                 .field(&pprint_ts(ts))
+                 .finish()
+            }
+            Task::ClipMatch(clip_match_request) => {
+                f.debug_struct("ClipMatch")
+                .field("key", &clip_match_request.key)
+                .field("segment", &(pprint_ts(clip_match_request.match_segment.start), clip_match_request.match_segment.duration()))
+                .field("result_screen", &clip_match_request.result_segment.map(|s| (pprint_ts(s.start), s.duration())))
+                .finish()
+            }
+            Task::Done => {
+                f.debug_struct("Done").finish()
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TaskResult {
     None,
-    MatchDetection(MatchDetection),
-    MatchResultQR(FTCEventsQR),
+    Error(String),
+    MatchDetection(i64, MatchDetection),
+    MatchResultQR(i64, FTCEventsQR),
+    ClipDone,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TaskSubmission {
     pub task: Task,
-    pub time_us: i64,
     pub result: TaskResult,
 }
 
@@ -61,7 +100,7 @@ enum ProjectState {
 
 pub struct OfflineEventProject {
     state: ProjectState,
-    duration_us: i64,
+    //duration_us: i64,
     next_tasks: VecDeque<Task>,
     in_flight: HashSet<Task>,
 
@@ -70,11 +109,11 @@ pub struct OfflineEventProject {
 }
 
 impl OfflineEventProject {
-    pub fn new(duration_us: i64) -> Self {
+    pub fn new(start: i64, duration_us: i64) -> Self {
         Self {
             state: ProjectState::InitialScan,
-            duration_us,
-            next_tasks: (0..duration_us)
+            //duration_us,
+            next_tasks: (start..duration_us)
                 // every 1s screw it 
                 // efficient? no. but it's gonna take weeks to figure out the logic to do this more efficiently
                 // and scaling up compute is easy
@@ -103,7 +142,7 @@ impl OfflineEventProject {
                 self.state = ProjectState::ClipMatches;
             }
             ProjectState::ClipMatches => {
-                todo!()
+                self.state = ProjectState::Done;
             }
             ProjectState::Done => {}
         }
@@ -115,36 +154,51 @@ impl OfflineEventProject {
         }
     }
 
+    pub fn waiting_on_result(&self) -> bool {
+        !self.in_flight.is_empty()
+    }
+
+    pub fn in_flight(&self) -> &HashSet<Task> {
+        &self.in_flight
+    }
+
     pub fn process_submission(&mut self, submission: TaskSubmission) {
         self.in_flight.remove(&submission.task);
         let state = self.state;
         match state {
             ProjectState::InitialScan => {
                 match submission.result {
-                    TaskResult::None => {}
-                    TaskResult::MatchDetection(match_detection) => {
+                    TaskResult::MatchDetection(time_us, match_detection) => {
                         if let Ok(key) = match_detection.name.parse::<MatchKey>() {
                             if !self.matches.contains_key(&key) {
                                 self.matches.insert(key, Match::new(key));
                             }
                             if let Some(ent) = self.matches.get_mut(&key) {
-                                ent.add_detection(WithTime::new(submission.time_us, match_detection));
+                                ent.add_detection(WithTime::new(time_us, match_detection));
                             }
                         }
                     }
-                    TaskResult::MatchResultQR(qr) => {
+                    TaskResult::MatchResultQR(time_us, qr) => {
                         let key = qr.key;
                         if !self.matches.contains_key(&key) {
                             self.matches.insert(key, Match::new(key));
                         }
                         if let Some(ent) = self.matches.get_mut(&key) {
-                            ent.add_results_screen(submission.time_us);
+                            ent.add_results_screen(time_us);
                         }
                     }
+                    TaskResult::Error(e) => {
+                        panic!("Error at {:?}: {e}", submission.task);
+                    }
+                    _ => {}
                 }
             }
-            ProjectState::ClipMatches => todo!(),
-            ProjectState::Done => todo!(),
+            ProjectState::ClipMatches => {
+                if let TaskResult::Error(e) = submission.result {
+                    panic!("Error at {:?}: {e}", submission.task);
+                }
+            }
+            ProjectState::Done => {}
         }
     }
 

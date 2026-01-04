@@ -28,20 +28,21 @@ impl core::str::FromStr for MatchKey {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts = s.trim().split_whitespace().collect::<Vec<&str>>();
+        let s_lower = s.trim().to_lowercase();
+        let parts = s_lower.split_whitespace().collect::<Vec<&str>>();
         match parts[..] {
-            ["Qualification", n, ..] => {
+            ["qualification", n, ..] => {
                 Ok(Self::Qualification { num: n.parse()? })
             }
             // For whatever baffling reason, ITD prefixes all its matches with "Playoff" but Decode doesn't.
             // Also da Vinci exists.
-            [.., "Match", n] => {
+            [.., "match", n] => {
                 Ok(Self::Playoff { num: n.parse()?, tiebreaker: 1 })
             }
-            [.., "Match", n, "Tiebreaker"] => {
+            [.., "match", n, "tiebreaker"] => {
                 Ok(Self::Playoff { num: n.parse()?, tiebreaker: 2 })
             }
-            [.., "Match", n, "Tiebreaker", t] => {
+            [.., "match", n, "tiebreaker", t] => {
                 Ok(Self::Playoff { num: n.parse()?, tiebreaker: t.parse::<u64>()? + 1_u64 })
             }
             _ => {
@@ -115,4 +116,8 @@ pub struct MatchDetection {
     pub phase: MatchPhase,
     /// match display info
     pub display_info: MatchDisplayInfo,
+}
+
+pub trait Detector {
+    fn detect(&self, frame: &opencv::core::Mat) -> Option<MatchDetection>;
 }

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use opencv::{core as cvcore, imgcodecs, imgproc, prelude::*};
 use crate::{MatchPhase, utils::*};
 
@@ -39,11 +41,14 @@ impl TemplateMatcher {
     }
 
     /// Checks if a frame matches the template per the threshold.
-    pub fn matches(&self, frame: &Mat) -> Option<TemplateMatch> {
-        let template_mat = self.match_template_raw(frame);
+    pub fn matches(&self, frame: &Mat, src_size: Option<Size>) -> Option<TemplateMatch> {
+        let start = Instant::now();
+        let template_mat = self.match_template_raw(frame, src_size);
         let mut max_val = 0_f64;
         let mut max_loc = cvcore::Point::new(-1, -1);
         cvcore::min_max_loc(&template_mat, None, Some(&mut max_val), None, Some(&mut max_loc), &Mat::default()).unwrap();
+        let size = template_mat.size().unwrap();
+        tracing::trace!("Template {}x{} detect: {max_val}, time {:.3} ms", size.width, size.height, (Instant::now() - start).as_secs_f64() * 1000.0);
         if max_val >= self.threshold {
             Some(TemplateMatch {
                 rel_x: max_loc.x as f64 / self.match_size.width(),
@@ -57,8 +62,9 @@ impl TemplateMatcher {
 
     /// Raw runs [`imgproc::match_template`] with the template.
     /// - frame: Mat of a full color frame
-    pub fn match_template_raw(&self, frame: &Mat) -> Mat {
-        let size: Size = frame.size().unwrap().into();
+    /// - src_size: size of original dims of base image.
+    pub fn match_template_raw(&self, frame: &Mat, src_size: Option<Size>) -> Mat {
+        let size: Size = src_size.unwrap_or_else(|| frame.size().unwrap().into());
         let frame_gray = cvt_color(frame, imgproc::COLOR_RGB2GRAY);
         let frame_resize = resize(&frame_gray, self.match_size.width() / size.width(), self.match_size.height() / size.height());
         
@@ -71,17 +77,17 @@ impl TemplateMatcher {
 /// ITD onwards have similar sprites used for match phase signalling.
 #[derive(Debug)]
 pub struct MatchPhaseDetector {
-    autonomous_detector: TemplateMatcher,
+    //autonomous_detector: TemplateMatcher,
     transition_detector: TemplateMatcher,
 }
 
 impl MatchPhaseDetector {
     pub fn new() -> Self {
-        let autonomous = imgcodecs::imdecode(include_bytes!("../templates/autonomous.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
+        //let autonomous = imgcodecs::imdecode(include_bytes!("../templates/autonomous.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
         let transition = imgcodecs::imdecode(include_bytes!("../templates/transition.png"), imgcodecs::IMREAD_GRAYSCALE).unwrap();
         Self {
-            autonomous_detector: TemplateMatcher::new(autonomous, Size::res_1080p(), Size::res_1080p(), 0.6),
-            transition_detector: TemplateMatcher::new(transition, Size::res_1080p(), Size::res_1080p(), 0.6),
+            //autonomous_detector: TemplateMatcher::new(autonomous, Size::res_1080p(), Size::res_1080p(), 0.7),
+            transition_detector: TemplateMatcher::new(transition, Size::res_1080p(), Size::res_1080p(), 0.7),
         }
     }
 
@@ -91,7 +97,7 @@ impl MatchPhaseDetector {
     /// 
     /// `roi` - ROI where match phase symbols get displayed
     /// `timestamp` - Detected timestamp, in seconds. E.g. 2:15 gets turned into 120 + 15 = 135
-    pub fn detect_match_phase(&self, roi: &Mat, timestamp: i64) -> Option<MatchPhase> {
+    pub fn detect_match_phase(&self, roi: &Mat, src_size: Size, timestamp: i64) -> Option<MatchPhase> {
         Some(match timestamp {
             151.. => {
                 // Timestamp is above 2 minutes 30 seconds (invalid)
@@ -99,11 +105,11 @@ impl MatchPhaseDetector {
             }
             150 => {
                 // Match timer still shows 2:30
-                if self.autonomous_detector.matches(roi).is_some() {
-                    MatchPhase::Autonomous
-                } else {
-                    MatchPhase::NotStarted
-                }
+                //if self.autonomous_detector.matches(roi).is_some() {
+                //    MatchPhase::Autonomous
+                //} else {
+                //}
+                MatchPhase::NotStarted
             }
             121..150 => {
                 // Match timer is between 2:30 and 2:01 inclusive.
@@ -111,7 +117,7 @@ impl MatchPhaseDetector {
             }
             1..=8 => {
                 // Possibly the 8-second transition period, need to check explicitly.
-                if self.transition_detector.matches(roi).is_some() {
+                if self.transition_detector.matches(roi, Some(src_size)).is_some() {
                     MatchPhase::Transition
                 } else {
                     MatchPhase::Teleop

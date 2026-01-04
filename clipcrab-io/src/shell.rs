@@ -21,6 +21,19 @@ fn new_ffmpeg() -> Command {
     cmd 
 }
 
+pub fn video_duration_us(fname: &Path) -> i64 {
+    let ffprobe_output = Command::new("ffprobe")
+        .args(["-v", "quiet", "-print_format", "json=c=1", "-show_entries", "format=duration"])
+        .arg(fname)
+        .output()
+        .unwrap()
+        .stdout;
+
+    let duration = serde_json::from_slice::<DurationJson>(&ffprobe_output).unwrap().data.duration.parse::<f64>().unwrap() as i64;
+    duration * 1_000_000
+
+}
+
 /// Splits a video file into frames in 15 second increments.
 pub fn ingest(fname: impl AsRef<Path>, output: impl AsRef<Path>) -> Result<(), anyhow::Error> {
     const STEP: usize = 15;

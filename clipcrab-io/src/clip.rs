@@ -95,7 +95,7 @@ impl VideoTranscoder {
             //self.log_progress(f64::from(
             //    ffmpeg::Rational(timestamp.unwrap_or(0) as i32, 1) * self.input_time_base,
             //));
-            self.timestamp = (ffmpeg::Rational(timestamp.unwrap_or(0) as i32, 1) * self.input_time_base).into();
+            self.timestamp = (ffmpeg::Rational(timestamp.unwrap_or(0) as i32, 1) / self.input_time_base).into();
 
             todo!("coal");
             

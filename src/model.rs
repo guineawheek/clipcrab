@@ -41,12 +41,30 @@ impl<T> PartialEq for WithTime<T> {
 }
 impl<T> Eq for WithTime<T> {}
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct MatchResultTimes {
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Segment {
     pub start: i64,
     pub end: i64,
 }
 
+impl Segment {
+    pub const fn from_start_end(start: i64, end: i64) -> Self {
+        Self {
+            start,
+            end,
+        }
+    }
+    pub const fn from_start_duration(start: i64, duration: i64) -> Self {
+        Self {
+            start,
+            end: start + duration
+        }
+    }
+
+    pub fn duration(&self) -> i64 {
+        (self.end - self.start).max(0)
+    }
+}
 
 #[derive(Debug)]
 pub struct Match {
@@ -145,7 +163,7 @@ impl Match {
         }
     }
 
-    pub fn calc_result_screen(&self) -> Option<MatchResultTimes> {
+    pub fn calc_result_screen(&self) -> Option<Segment> {
         // here we cluster to find segments where each point is less than 5 seconds apart
         let clusters = cluster_times(
             self.result_screen_detects.iter(),
@@ -161,10 +179,10 @@ impl Match {
 
         // TODO: pull out these constants and make them season-dependent
         let (first, last) = (last_cluster[0], *last_cluster.last().unwrap());
-        Some(MatchResultTimes {
-            start: first - 13_000_000,
-            end: (first + 12_000_0000).min(last - 2_000_000),
-        })
+        Some(Segment::from_start_end(
+            first - 13_000_000,
+            (first + 12_000_0000).min(last - 2_000_000),
+        ))
     }
 }
 
